@@ -1,15 +1,18 @@
+use std::io::Read;
 
-#[derive(Debug,thiserror::Error)]
-pub enum EntryError{
+#[derive(Debug, thiserror::Error)]
+pub enum EntryError {
     #[error("Invalid header")]
     InvalidHeader,
     #[error("buffer too short to decode entry")]
-    BufferTooShort
+    BufferTooShort,
+    #[error("IO error: {0}")]
+    IO(#[from] std::io::Error),
 }
 #[derive(Debug)]
 pub struct Entry {
     key: Vec<u8>,
-    val: Vec<u8>
+    val: Vec<u8>,
 }
 
 impl Entry {
@@ -19,32 +22,32 @@ impl Entry {
     pub fn encode(&self) -> Vec<u8> {
         let kl = self.key.len() as u32;
         let vl = self.val.len() as u32;
-        let mut data = Vec::with_capacity(4+4+kl as usize + vl as usize);
+        let mut data = Vec::with_capacity(4 + 4 + kl as usize + vl as usize);
         data.extend_from_slice(&kl.to_le_bytes());
         data.extend_from_slice(&vl.to_le_bytes());
         data.extend_from_slice(&self.key);
         data.extend_from_slice(&self.val);
         data
     }
-    pub fn decode(data: Vec<u8>) -> Result<Self, EntryError > {
-        if data.len() < 8 {
-            return Err(EntryError::InvalidHeader);
-        }
-        let kl = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
-        let vl = u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize;
+    pub fn decode(file: &mut impl Read) -> Result<Self, EntryError> {
+        let mut header = [0u8; 8];
+        file.read_exact(&mut header)?;
 
-        let req_len = 8usize.saturating_add(kl).saturating_add(vl);
-        if data.len() < req_len {
-            return Err(EntryError::BufferTooShort);
-        }
-        let key = data[8..8+ kl].to_vec();
-        let val = data[(8+kl)..(8+kl+vl)].to_vec();
-        Ok(Entry::new(key,val))
+        let kl = u32::from_le_bytes(header[0..4].try_into().unwrap()) as usize;
+        let vl = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
+
+        let req_len = kl.saturating_add(vl);
+        let mut payload = vec![0u8; req_len];
+        file.read_exact(&mut payload)?;
+        let key = payload[0..kl].to_vec();
+        let val = payload[kl..kl + vl].to_vec();
+        Ok(Entry::new(key, val))
     }
 }
 
 mod tests {
     use crate::entry::{Entry, EntryError};
+    use std::io::ErrorKind;
 
     #[test]
     fn test_entry() {
@@ -55,25 +58,31 @@ mod tests {
         let data = ent.encode();
         assert_eq!(data.len(), 12, "Encoded data should be exactly 12 bytes");
 
-        let decoded = Entry::decode(data.clone()).unwrap();
+        let mut valid_reader = data.as_slice();
+        let decoded = Entry::decode(&mut valid_reader).unwrap();
         assert_eq!(decoded.key, key);
         assert_eq!(decoded.val, val);
 
         let short_header = vec![0, 1, 2, 3, 4];
-        let err = Entry::decode(short_header).unwrap_err();
+        let mut short_reader = short_header.as_slice();
+        let err = Entry::decode(&mut short_reader).unwrap_err();
+
         assert!(
-            matches!(err, EntryError::InvalidHeader),
-            "Expected InvalidHeader, got {:?}", err
+            matches!(err, EntryError::IO(ref e) if e.kind() == ErrorKind::UnexpectedEof),
+            "Expected UnexpectedEof IO error for short header, got {:?}",
+            err
         );
 
         let mut corrupted_data = data;
         corrupted_data.pop();
 
-        let err = Entry::decode(corrupted_data).unwrap_err();
+        let mut corrupted_reader = corrupted_data.as_slice();
+        let err = Entry::decode(&mut corrupted_reader).unwrap_err();
+
         assert!(
-            matches!(err, EntryError::BufferTooShort),
-            "Expected BufferTooShort, got {:?}", err
+            matches!(err, EntryError::IO(ref e) if e.kind() == ErrorKind::UnexpectedEof),
+            "Expected UnexpectedEof IO error for short payload, got {:?}",
+            err
         );
     }
-    
 }
