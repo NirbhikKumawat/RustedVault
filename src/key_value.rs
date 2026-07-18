@@ -1,10 +1,7 @@
+use crate::vault_error::KeyValueError;
+use crate::vault_error::VaultError;
 use std::collections::HashMap;
 
-#[derive(Debug, thiserror::Error)]
-pub enum KeyValueError {
-    #[error("{key:?} not found")]
-    KeyNotFound { key: Vec<u8> },
-}
 #[derive(Default)]
 pub struct KeyValue {
     memory: HashMap<Vec<u8>, Vec<u8>>,
@@ -15,26 +12,30 @@ impl KeyValue {
             memory: HashMap::new(),
         }
     }
-    pub fn open(&mut self) -> Result<(), KeyValueError> {
+    pub fn open(&mut self) -> Result<(), VaultError> {
         self.memory.clear();
         Ok(())
     }
-    pub fn close(&self) -> Result<(), KeyValueError> {
+    pub fn close(&self) -> Result<(), VaultError> {
         Ok(())
     }
-    pub fn delete(&mut self, key: Vec<u8>) -> Result<(), KeyValueError> {
+    pub fn delete(&mut self, key: Vec<u8>) -> Result<(), VaultError> {
         match self.memory.remove(&key) {
             Some(_) => Ok(()),
-            None => Err(KeyValueError::KeyNotFound { key }),
+            None => Err(VaultError::KeyValueError(KeyValueError::KeyNotFound {
+                key,
+            })),
         }
     }
-    pub fn get(&self, key: Vec<u8>) -> Result<Vec<u8>, KeyValueError> {
+    pub fn get(&self, key: Vec<u8>) -> Result<Vec<u8>, VaultError> {
         self.memory
             .get(&key)
             .cloned()
-            .ok_or(KeyValueError::KeyNotFound { key })
+            .ok_or(VaultError::KeyValueError(KeyValueError::KeyNotFound {
+                key,
+            }))
     }
-    pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<bool, KeyValueError> {
+    pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<bool, VaultError> {
         match self.memory.entry(key) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
                 if entry.get() == &value {

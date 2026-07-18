@@ -1,14 +1,6 @@
+use crate::vault_error::VaultError;
 use std::io::Read;
 
-#[derive(Debug, thiserror::Error)]
-pub enum EntryError {
-    #[error("Invalid header")]
-    InvalidHeader,
-    #[error("buffer too short to decode entry")]
-    BufferTooShort,
-    #[error("IO error: {0}")]
-    IO(#[from] std::io::Error),
-}
 #[derive(Debug)]
 pub struct Entry {
     key: Vec<u8>,
@@ -29,7 +21,7 @@ impl Entry {
         data.extend_from_slice(&self.val);
         data
     }
-    pub fn decode(file: &mut impl Read) -> Result<Self, EntryError> {
+    pub fn decode(file: &mut impl Read) -> Result<Self, VaultError> {
         let mut header = [0u8; 8];
         file.read_exact(&mut header)?;
 
@@ -46,7 +38,8 @@ impl Entry {
 }
 
 mod tests {
-    use crate::entry::{Entry, EntryError};
+    use crate::entry::Entry;
+    use crate::vault_error::VaultError;
     use std::io::ErrorKind;
 
     #[test]
@@ -68,7 +61,7 @@ mod tests {
         let err = Entry::decode(&mut short_reader).unwrap_err();
 
         assert!(
-            matches!(err, EntryError::IO(ref e) if e.kind() == ErrorKind::UnexpectedEof),
+            matches!(err,VaultError::Io(ref e) if e.kind() == ErrorKind::UnexpectedEof),
             "Expected UnexpectedEof IO error for short header, got {:?}",
             err
         );
@@ -80,8 +73,8 @@ mod tests {
         let err = Entry::decode(&mut corrupted_reader).unwrap_err();
 
         assert!(
-            matches!(err, EntryError::IO(ref e) if e.kind() == ErrorKind::UnexpectedEof),
-            "Expected UnexpectedEof IO error for short payload, got {:?}",
+            matches!(err,VaultError::Io(ref e) if e.kind() == ErrorKind::UnexpectedEof),
+            "Expected UnexpectedEof IO error for short header, got {:?}",
             err
         );
     }

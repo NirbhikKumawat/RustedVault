@@ -1,4 +1,5 @@
-use RustedVault::key_value::{KeyValue, KeyValueError};
+use RustedVault::key_value::KeyValue;
+use RustedVault::vault_error::{KeyValueError, VaultError};
 
 #[test]
 fn test_key_value() {
@@ -17,7 +18,10 @@ fn test_key_value() {
     kv.delete(vec![36, 64]).unwrap();
     let err = kv.get(key.clone()).unwrap_err();
     assert!(
-        matches!(err, KeyValueError::KeyNotFound { .. }),
+        matches!(
+            err,
+            VaultError::KeyValueError(KeyValueError::KeyNotFound { .. })
+        ),
         "Expected KeyNotFound error, got {:?}",
         err
     );
