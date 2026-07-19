@@ -19,6 +19,14 @@ pub enum LogError {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum CellError {
+    #[error("Expected more data,expected {expected} bytes, got {actual} bytes")]
+    DataShortage { expected: usize, actual: usize },
+    #[error("Invalid UTF-8 string")]
+    InvalidUTF8,
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum VaultError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -28,4 +36,6 @@ pub enum VaultError {
     Log(#[from] LogError),
     #[error("KeyValueError: {0}")]
     KeyValueError(#[from] KeyValueError),
+    #[error("CellError: {0}")]
+    CellError(#[from] CellError),
 }
