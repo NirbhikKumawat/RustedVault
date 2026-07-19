@@ -40,6 +40,7 @@ impl Log {
     pub fn write(&mut self, entry: &Entry) -> Result<(), VaultError> {
         let data = entry.encode();
         self.file.write_all(&data)?;
+        self.file.sync_all()?;
         Ok(())
     }
     pub fn rewind(&mut self) -> Result<(), VaultError> {

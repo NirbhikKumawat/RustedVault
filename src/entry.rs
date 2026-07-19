@@ -1,4 +1,5 @@
-use crate::vault_error::VaultError;
+use crate::vault_error::{EntryError, VaultError};
+use crc32fast::Hasher;
 use std::io::Read;
 
 #[derive(Debug)]
@@ -29,9 +30,22 @@ impl Entry {
         }
         data.extend_from_slice(&self.key);
         data.extend_from_slice(&self.val);
-        data
+
+        let mut hasher = Hasher::new();
+        hasher.update(&data);
+        let checksum = hasher.finalize();
+
+        let mut final_data = Vec::with_capacity(4 + data.len());
+        final_data.extend_from_slice(&checksum.to_le_bytes());
+        final_data.extend_from_slice(&data);
+
+        final_data
     }
     pub fn decode(file: &mut impl Read) -> Result<Self, VaultError> {
+        let mut crc_buf = [0u8; 4];
+        file.read_exact(&mut crc_buf)?;
+        let stored_crc = u32::from_le_bytes(crc_buf);
+
         let mut header = [0u8; 9];
         file.read_exact(&mut header)?;
 
@@ -42,8 +56,22 @@ impl Entry {
         let req_len = kl.saturating_add(vl);
         let mut payload = vec![0u8; req_len];
         file.read_exact(&mut payload)?;
+
+        let mut hasher = Hasher::new();
+        hasher.update(&header);
+        hasher.update(&payload);
+        let calculated_crc = hasher.finalize();
+
+        if stored_crc != calculated_crc {
+            return Err(VaultError::Entry(EntryError::ChecksumMismatch {
+                expected: stored_crc,
+                actual: calculated_crc,
+            }));
+        }
+
         let key = payload[0..kl].to_vec();
         let val = payload[kl..kl + vl].to_vec();
+
         Ok(Entry::new(&key, &val, deleted))
     }
 }
@@ -60,7 +88,7 @@ mod tests {
         let ent = Entry::new(&key, &val, false);
 
         let data = ent.encode();
-        assert_eq!(data.len(), 13, "Encoded data should be exactly 12 bytes");
+        assert_eq!(data.len(), 17, "Encoded data should be exactly 12 bytes");
 
         let mut valid_reader = data.as_slice();
         let decoded = Entry::decode(&mut valid_reader).unwrap();

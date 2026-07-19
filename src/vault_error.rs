@@ -9,6 +9,8 @@ pub enum EntryError {
     InvalidHeader,
     #[error("buffer too short to decode entry")]
     BufferTooShort,
+    #[error("Checksum mismatch: expected {expected}, got {actual}")]
+    ChecksumMismatch { expected: u32, actual: u32 },
 }
 #[derive(Debug, thiserror::Error)]
 pub enum LogError {
